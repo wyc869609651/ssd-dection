@@ -11,7 +11,7 @@ import torch.utils.data as data
 from torch.autograd import Variable
 
 from data import *
-from data.SIXray import *
+from data.SIXray_train import *
 from layers.modules import MultiBoxLoss
 from ssd import build_ssd
 from utils.augmentations import SSDAugmentation
