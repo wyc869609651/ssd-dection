@@ -77,8 +77,8 @@ def train():
                                                          MEANS))
     elif args.dataset == 'SIXray':
         cfg = ray
-        dataset = SIXrayDetection(args.SIXray_root, args.imagesetfile,
-                                  BaseTransform(cfg['min_dim'], MEANS))
+        dataset = SIXrayDetection(root=args.dataset_root,
+                                  transform=BaseTransform(cfg['min_dim'], MEANS))
 
     if args.visdom:
         import visdom
@@ -121,7 +121,7 @@ def train():
     epoch = 0
     print('Loading the dataset...')
 
-    epoch_size = len(dataset) // args.batch_size
+    epoch_size = len(dataset)
     print('Training SSD on:', dataset.name)
     print('Using the specified args:')
     print(args)

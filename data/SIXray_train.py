@@ -17,7 +17,7 @@ SIXray_CLASSES = (
     '带电芯充电宝', '不带电芯充电宝'
 )
 # note: if you used our download scripts, this should be right
-SIXray_ROOT = "/media/trs2/Xray20190723/"
+SIXray_ROOT = "G:\MachineLearning"
 
 
 class SIXrayAnnotationTransform(object):
@@ -109,7 +109,7 @@ class SIXrayDetection(data.Dataset):
     """
 
     def __init__(self, root,
-                 image_sets = ['core_500', 'coreless_5000'],
+                 image_sets=['core_500', 'coreless_5000'],
                  transform=None, target_transform=SIXrayAnnotationTransform(),
                  dataset_name='SIXray_train'):
         # self.root = root
@@ -122,10 +122,9 @@ class SIXrayDetection(data.Dataset):
         self._imgpath = osp.join(self.root, '%s', 'Image', '%s.jpg')
         self.ids = list()
         for dirname in image_sets:
-            rootpath = osp.join(self.root, dirname)
-            nameListPath = osp.join(rootpath, 'nameList.txt')
+            nameListPath = osp.join(self.root, dirname, 'nameList.txt')
             for line in open(nameListPath, 'r'):
-                self.ids.append((rootpath, line.strip()))
+                self.ids.append((dirname, line.strip()))
 
     def __getitem__(self, index):
         im, gt, h, w, og_im = self.pull_item(index)
@@ -136,12 +135,12 @@ class SIXrayDetection(data.Dataset):
 
     def pull_item(self, index):
         img_id = self.ids[index]
-
         target = self._annopath % img_id  # 注释目录
         img = cv2.imread(self._imgpath % img_id)
         if img is None:
             print('\nwrong\n')
             print(self._imgpath % img_id)
+            return None
 
         height, width, channels = img.shape
         og_img = img

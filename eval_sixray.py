@@ -10,8 +10,8 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from data import BaseTransform
-from data.SIXray import SIXray_ROOT, SIXrayAnnotationTransform, SIXrayDetection
-from data.SIXray import SIXray_CLASSES as labelmap
+from data.SIXray_train import SIXray_ROOT, SIXrayAnnotationTransform, SIXrayDetection
+from data.SIXray_train import SIXray_CLASSES as labelmap
 import torch.utils.data as data
 
 from ssd import build_ssd
@@ -76,12 +76,8 @@ if torch.cuda.is_available():
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
-annopath = os.path.join(args.SIXray_root, 'Anno_core_coreless_battery_sub_2000_500', '%s.xml')
+annopath = os.path.join(args.SIXray_root, 'Anno_core_coreless_battery_sub_2000_500', '%s.txt')
 imgpath = os.path.join(args.SIXray_root, 'cut_Image_core_coreless_battery_sub_2000_500', '%s.jpg')
-
-# imgsetpath = os.path.join(args.voc_root, 'VOC2007', 'ImageSets', 'Main', '{:s}.txt')
-
-YEAR = '2007'
 
 devkit_path = args.save_folder
 dataset_mean = (104, 117, 123)
@@ -116,22 +112,9 @@ class Timer(object):
 
 def parse_rec(filename,imgpath):
     """ Parse a PASCAL VOC xml file """
-    # tree = ET.parse(filename)
-    # filename = filename[:-3] + 'txt'
-
-    filename = filename.replace('.xml', '.txt')
-    
-	#imagename0 = filename.replace('Anno_core_coreless_battery_sub_2000_500', 'cut_Image_core_coreless_battery_sub_2000_500')
-	
-	img_fold_name = imgpath.split('/')[-2]
-	imagename0 = filename.replace('Anno_core_coreless_battery_sub_2000_500', img_fold_name)
-    imagename1 = imagename0.replace('.txt', '.jpg')  # jpg form
-    imagename2 = imagename0.replace('.txt', '.jpg')
     objects = []
     # 还需要同时打开图像，读入图像大小
-    img = cv2.imread(imagename1)
-    if img is None:
-        img = cv2.imread(imagename2)
+    img = cv2.imread(imgpath)
     height, width, channels = img.shape
     with open(filename, "r", encoding='utf-8') as f1:
         dataread = f1.readlines()
@@ -166,21 +149,6 @@ def parse_rec(filename,imgpath):
                                   float(xmax) - 1,
                                   float(ymax) - 1]
             objects.append(obj_struct)
-
-    '''
-    for obj in tree.findall('object'):
-        obj_struct = {}
-        obj_struct['name'] = obj.find('name').text.lower().strip()
-        obj_struct['pose'] = obj.find('pose').text
-        obj_struct['truncated'] = int(obj.find('truncated').text)
-        obj_struct['difficult'] = int(obj.find('difficult').text)
-        bbox = obj.find('bndbox')
-        obj_struct['bbox'] = [float(bbox.find('xmin').text) - 1,
-                              float(bbox.find('ymin').text) - 1,
-                              float(bbox.find('xmax').text) - 1,
-                              float(bbox.find('ymax').text) - 1]
-        objects.append(obj_struct)
-    '''
     return objects
 
 
@@ -242,19 +210,6 @@ def do_python_eval(output_dir='output', use_07=False):
             pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
     print("EPOCH, {:d}, mAP, {:.4f}, core_AP, {:.4f}, coreless_AP, {:.4f}".format(EPOCH, np.mean(aps), aps[0], aps[1]))
     # print('Mean AP = {:.4f}'.format(np.mean(aps)))
-    '''
-    print('~~~~~~~~')
-    print('Results:')
-    for ap in aps:
-        print('{:.3f}'.format(ap))
-    print('{:.3f}'.format(np.mean(aps)))
-    print('~~~~~~~~')
-    print('--------------------------------------------------------------')
-    print('Results computed with the **unofficial** Python eval code.')
-    print('Results should be very close to the official MATLAB eval code.')
-    print('--------------------------------------------------------------')
-    '''
-
 
 def voc_ap(rec, prec, use_07_metric=True):
     """ ap = voc_ap(rec, prec, [use_07_metric])
@@ -341,7 +296,7 @@ cachedir: Directory for caching the annotations
         # load annots
         recs = {}
         for i, imagename in enumerate(imagenames):
-            recs[imagename] = parse_rec(annopath % (imagename),imgpath)
+            recs[imagename] = parse_rec(annopath % (imagename),imgpath % (imagename))
             '''
             if i % 100 == 0:
                 print('Reading annotation for {:d}/{:d}'.format(
@@ -447,8 +402,6 @@ cachedir: Directory for caching the annotations
 
 def test_net(save_folder, net, cuda, dataset, transform, top_k,
              im_size=300, thresh=0.05):
-    # //
-    # //
     num_images = len(dataset)
     # all detections are collected into:
     #    all_boxes[cls][image] = N x 5 array of detections in
@@ -458,17 +411,14 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
 
     # timers
     _t = {'im_detect': Timer(), 'misc': Timer()}
-    output_dir = get_output_dir('ssd300_120000', set_type)
+    output_dir = get_output_dir('ssd300_sixray', set_type)
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):
         im, gt, h, w, og_im = dataset.pull_item(i)
         # 这里im的颜色偏暗，因为BaseTransform减去了一个mean
-        # im_saver = cv2.resize(im[(a2,a1,0),:,:].permute((a1,a2,0)).numpy(), (w,h))
 
         im_det = og_im.copy()
-        im_gt = og_im.copy()
-
         # print(im_det)
         x = Variable(im.unsqueeze(0))
         if args.cuda:
@@ -533,15 +483,6 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
             cv2.rectangle(im_det, (int(item[0] * w), int(item[1] * h)), (int(item[2] * w), int(item[3] * h)),
                           (0, 255, 255), 2)
             cv2.putText(im_det, chinese, (int(item[0] * w), int(item[1] * h) - 5), 0, 0.6, (0, 255, 255), 2)
-            # print(labelmap[int(item[4])])
-
-        # print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1, num_images, detect_time))
-
-        # cv2.imwrite('/media/trs2/wuzhangjie/SSD/eval/Xray20190723/Attention/base_battery_core_bs8_V/det_images/{0}_det.jpg'.format(dataset.ids[i]), im_det)
-
-        # cv2.imwrite('/media/dsg3/shiyufeng/eval/Xray20190723/battery_2cV_version/20epoch_network/{0}_gt.jpg'.format(dataset.ids[i]), im_gt)
-        # cv2.imwrite( '/media/dsg3/husheng/eval/{0}_det.jpg'.format(dataset.ids[i]), im_det)
-        # cv2.imwrite( '/media/dsg3/husheng/eval/{0}_gt.jpg'.format(dataset.ids[i]), im_gt)
 
     with open(det_file, 'wb') as f:
         pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
@@ -555,49 +496,21 @@ def evaluate_detections(box_list, output_dir, dataset):
     do_python_eval(output_dir)
 
 
-def reset_args(EPOCH):
-    global args
-    args.trained_model = "/media/trs2/wuzhangjie/SSD/weights/Xray20190723/2019-10-18_16-23-15Xray0723_bat_core_coreless_bs8_V_resume140/ssd300_Xray20190723_{:d}.pth".format(
-        EPOCH)
-    saver_root = '/media/trs2/wuzhangjie/SSD/eval/Xray20190723/Attention/base_battery_core_coreless_bs8_V/'
-    if not os.path.exists(saver_root):
-        os.mkdir(saver_root)
-    args.save_folder = saver_root + '{:d}epoch_500/'.format(EPOCH)
-
-    if not os.path.exists(args.save_folder):
-        os.mkdir(args.save_folder)
-    else:
-        shutil.rmtree(args.save_folder)
-        os.mkdir(args.save_folder)
-
-    global devkit_path
-    devkit_path = args.save_folder
-
-
 if __name__ == '__main__':
-    # EPOCHS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80]
-    # EPOCHS = [85, 90, 95, 100, 105, 110, 115, 120]
-    # EPOCHS = [90, 95, 100, 105, 110, 115, 120, 125]
-    EPOCHS = [x for x in range(145, 205, 5)]
-    print(EPOCHS)
-    for EPOCH in EPOCHS:
-        reset_args(EPOCH)
-
-        # load net
-        num_classes = len(labelmap) + 1  # +a1 for background
-        net = build_ssd('test', 300, num_classes)  # initialize SSD
-        net.load_state_dict(torch.load(args.trained_model))
-        net.eval()
-        # print('Finished loading model!')
-        # load data
-        dataset = SIXrayDetection(args.SIXray_root, args.imagesetfile,
-                                  BaseTransform(300, dataset_mean),
-                                  SIXrayAnnotationTransform())
-        if args.cuda:
-            net = net.cuda()
-            cudnn.benchmark = True
-        # evaluation
-
-        test_net(args.save_folder, net, args.cuda, dataset,
-                 BaseTransform(net.size, dataset_mean), args.top_k, 300,
-                 thresh=args.confidence_threshold)
+    # load net
+    num_classes = len(labelmap) + 1  # +1 for background
+    net = build_ssd('test', 300, num_classes)  # initialize SSD
+    net.load_state_dict(torch.load(args.trained_model))
+    net.eval()
+    print('Finished loading model!')
+    # load data
+    dataset = SIXrayDetection(args.SIXray_root, args.imagesetfile,
+                              BaseTransform(300, dataset_mean),
+                              SIXrayAnnotationTransform())
+    if args.cuda:
+        net = net.cuda()
+        cudnn.benchmark = True
+    # evaluation
+    test_net(args.save_folder, net, args.cuda, dataset,
+             BaseTransform(net.size, dataset_mean), args.top_k, 300,
+             thresh=args.confidence_threshold)
