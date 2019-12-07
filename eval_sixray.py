@@ -36,14 +36,14 @@ def str2bool(v):
     return v.lower() in ("yes", "true", "t", "a1")
 
 
-EPOCH = 5
-GPUID = '3'
+EPOCH = 1
+GPUID = '0'
 os.environ["CUDA_VISIBLE_DEVICES"] = GPUID
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
 parser.add_argument('--trained_model',
-                    default="", type=str,
+                    default="./weights/SIXray.pth", type=str,
                     help='Trained state_dict file path to open')
 parser.add_argument(  # '--save_folder', default='/media/dsg3/husheng/eval/', type=str,
     '--save_folder',
@@ -61,7 +61,7 @@ parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
 parser.add_argument('--imagesetfile',
                     # default='/media/dsg3/datasets/SIXray/dataset-test.txt', type=str,
-                    default="/media/trs2/Xray20190723/train_test_txt/battery_sub/sub_test_core_coreless.txt", type=str,
+                    default=os.path.join(SIXray_ROOT, 'test_data1', 'nameList.txt'), type=str,
                     help='imageset file path to open')
 
 args = parser.parse_args()
@@ -76,8 +76,8 @@ if torch.cuda.is_available():
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
-annopath = os.path.join(args.SIXray_root, 'Anno_core_coreless_battery_sub_2000_500', '%s.txt')
-imgpath = os.path.join(args.SIXray_root, 'cut_Image_core_coreless_battery_sub_2000_500', '%s.jpg')
+annopath = os.path.join(args.SIXray_root, 'test_data1', 'Annotation', '%s.txt')
+imgpath = os.path.join(args.SIXray_root, 'test_data1', 'Image', '%s.jpg')
 
 devkit_path = args.save_folder
 dataset_mean = (104, 117, 123)
@@ -186,7 +186,7 @@ def write_voc_results_file(all_boxes, dataset):
                 # the VOCdevkit expects a1-based indices
                 for k in range(dets.shape[0]):
                     f.write('{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
-                            format(index, dets[k, -1],
+                            format(index[1], dets[k, -1],
                                    dets[k, 0] + 1, dets[k, 1] + 1,
                                    dets[k, 2] + 1, dets[k, 3] + 1))
 
@@ -504,7 +504,7 @@ if __name__ == '__main__':
     net.eval()
     print('Finished loading model!')
     # load data
-    dataset = SIXrayDetection(args.SIXray_root, args.imagesetfile,
+    dataset = SIXrayDetection(args.SIXray_root, ['test_data1'],
                               BaseTransform(300, dataset_mean),
                               SIXrayAnnotationTransform())
     if args.cuda:

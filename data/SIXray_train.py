@@ -6,6 +6,7 @@ import torch
 import torch.utils.data as data
 import cv2
 import numpy as np
+import random
 
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
@@ -14,10 +15,10 @@ else:
 
 
 SIXray_CLASSES = (
-    'core_battery', 'coreless_battery'
+    '带电芯充电宝', '不带电芯充电宝'
 )
 # note: if you used our download scripts, this should be right
-SIXray_ROOT = "D:/wuyanchen/buaa"
+SIXray_ROOT = "G:/MachineLearning"
 
 
 class SIXrayAnnotationTransform(object):
@@ -125,6 +126,7 @@ class SIXrayDetection(data.Dataset):
             nameListPath = osp.join(self.root, dirname, 'nameList.txt')
             for line in open(nameListPath, 'r'):
                 self.ids.append((dirname, line.strip()))
+        random.shuffle(self.ids)
 
     def __getitem__(self, index):
         im, gt, h, w, og_im = self.pull_item(index)

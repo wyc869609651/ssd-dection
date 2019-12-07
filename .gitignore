@@ -94,6 +94,13 @@ ENV/
 # weights
 weights/
 
+# result
+results/
+ssd300_sixray/
+
+# cache
+annotations_cache/
+
 #DS_Store
 .DS_Store
 
