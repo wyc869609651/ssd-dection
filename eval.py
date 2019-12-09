@@ -5,79 +5,85 @@
 """
 
 from __future__ import print_function
+
+import argparse
+import os
+import pickle
+import sys
+import time
+
+import cv2
+import numpy as np
 import torch
-import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
-from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
-from data import VOC_CLASSES as labelmap
-import torch.utils.data as data
 
+from data import BaseTransform
+from data.SIXray import SIXray_CLASSES as labelmap
+from data.SIXray import SIXray_ROOT, SIXrayAnnotationTransform, SIXrayDetection
 from ssd import build_ssd
 
-import sys
-import os
-import time
-import argparse
-import numpy as np
-import pickle
-import cv2
-
 if sys.version_info[0] == 2:
-    import xml.etree.cElementTree as ET
+    pass
 else:
-    import xml.etree.ElementTree as ET
+    pass
 
 
 def str2bool(v):
-    return v.lower() in ("yes", "true", "t", "1")
+    return v.lower() in ("yes", "true", "t", "a1")
 
+
+EPOCH = 1
+GPUID = '0'
+os.environ["CUDA_VISIBLE_DEVICES"] = GPUID
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
 parser.add_argument('--trained_model',
-                    default='weights/ssd300_VOC_1000.pth', type=str,
+                    default="./weights/SIXray.pth", type=str,
                     help='Trained state_dict file path to open')
-parser.add_argument('--save_folder', default='eval/', type=str,
-                    help='File path to save results')
-parser.add_argument('--confidence_threshold', default=0.01, type=float,
+parser.add_argument(  # '--save_folder', default='/media/dsg3/husheng/eval/', type=str,
+    '--save_folder',
+    default="", type=str,
+    help='File path to save results')
+parser.add_argument('--confidence_threshold', default=0.2, type=float,
                     help='Detection confidence threshold')
 parser.add_argument('--top_k', default=5, type=int,
                     help='Further restrict the number of predictions to parse')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use cuda to train model')
-parser.add_argument('--voc_root', default=VOC_ROOT,
+parser.add_argument('--SIXray_root', default=SIXray_ROOT,
                     help='Location of VOC root directory')
 parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
+parser.add_argument('--imagesetfile',
+                    # default='/media/dsg3/datasets/SIXray/dataset-test.txt', type=str,
+                    default=os.path.join(SIXray_ROOT, 'test_data', 'nameList.txt'), type=str,
+                    help='imageset file path to open')
 
 args = parser.parse_args()
-
-if not os.path.exists(args.save_folder):
-    os.mkdir(args.save_folder)
 
 if torch.cuda.is_available():
     if args.cuda:
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
     if not args.cuda:
-        print("WARNING: It looks like you have a CUDA device, but aren't using \
-              CUDA.  Run with --cuda for optimal eval speed.")
+        # print("WARNING: It looks like you have a CUDA device, but aren't using \
+        #         CUDA.  Run with --cuda for optimal eval speed.")
         torch.set_default_tensor_type('torch.FloatTensor')
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
-annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations', '%s.xml')
-imgpath = os.path.join(args.voc_root, 'VOC2007', 'JPEGImages', '%s.jpg')
-imgsetpath = os.path.join(args.voc_root, 'VOC2007', 'ImageSets',
-                          'Main', '{:s}.txt')
-YEAR = '2007'
-devkit_path = args.voc_root + 'VOC' + YEAR
+annopath = os.path.join(args.SIXray_root, 'test_data', 'Annotation', '%s.txt')
+imgpath = os.path.join(args.SIXray_root, 'test_data', 'Image', '%s.jpg')
+
+devkit_path = args.save_folder
 dataset_mean = (104, 117, 123)
 set_type = 'test'
 
 
 class Timer(object):
     """A simple timer."""
+
     def __init__(self):
         self.total_time = 0.
         self.calls = 0
@@ -101,23 +107,45 @@ class Timer(object):
             return self.diff
 
 
-def parse_rec(filename):
+def parse_rec(filename,imgpath):
     """ Parse a PASCAL VOC xml file """
-    tree = ET.parse(filename)
     objects = []
-    for obj in tree.findall('object'):
-        obj_struct = {}
-        obj_struct['name'] = obj.find('name').text
-        obj_struct['pose'] = obj.find('pose').text
-        obj_struct['truncated'] = int(obj.find('truncated').text)
-        obj_struct['difficult'] = int(obj.find('difficult').text)
-        bbox = obj.find('bndbox')
-        obj_struct['bbox'] = [int(bbox.find('xmin').text) - 1,
-                              int(bbox.find('ymin').text) - 1,
-                              int(bbox.find('xmax').text) - 1,
-                              int(bbox.find('ymax').text) - 1]
-        objects.append(obj_struct)
-
+    # 还需要同时打开图像，读入图像大小
+    img = cv2.imread(imgpath)
+    height, width, channels = img.shape
+    with open(filename, "r", encoding='utf-8') as f1:
+        dataread = f1.readlines()
+        for annotation in dataread:
+            obj_struct = {}
+            temp = annotation.split()
+            name = temp[1]
+            if name != '带电芯充电宝' and name != '不带电芯充电宝':
+                continue
+            xmin = int(temp[2])
+            # 只读取V视角的
+            if int(xmin) > width:
+                continue
+            if xmin < 0:
+                xmin = 1
+            ymin = int(temp[3])
+            if ymin < 0:
+                ymin = 1
+            xmax = int(temp[4])
+            if xmax > width: 
+                xmax = width - 1
+            ymax = int(temp[5])
+            if ymax > height:
+                ymax = height - 1
+            ##name
+            obj_struct['name'] = name
+            obj_struct['pose'] = 'Unspecified'
+            obj_struct['truncated'] = 0
+            obj_struct['difficult'] = 0
+            obj_struct['bbox'] = [float(xmin) - 1,
+                                  float(ymin) - 1,
+                                  float(xmax) - 1,
+                                  float(ymax) - 1]
+            objects.append(obj_struct)
     return objects
 
 
@@ -145,14 +173,14 @@ def get_voc_results_file_template(image_set, cls):
 
 def write_voc_results_file(all_boxes, dataset):
     for cls_ind, cls in enumerate(labelmap):
-        print('Writing {:s} VOC results file'.format(cls))
+        # print('Writing {:s} VOC results file'.format(cls))
         filename = get_voc_results_file_template(set_type, cls)
         with open(filename, 'wt') as f:
             for im_ind, index in enumerate(dataset.ids):
-                dets = all_boxes[cls_ind+1][im_ind]
+                dets = all_boxes[cls_ind + 1][im_ind]
                 if dets == []:
                     continue
-                # the VOCdevkit expects 1-based indices
+                # the VOCdevkit expects a1-based indices
                 for k in range(dets.shape[0]):
                     f.write('{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
                             format(index[1], dets[k, -1],
@@ -160,36 +188,25 @@ def write_voc_results_file(all_boxes, dataset):
                                    dets[k, 2] + 1, dets[k, 3] + 1))
 
 
-def do_python_eval(output_dir='output', use_07=True):
+def do_python_eval(output_dir='output', use_07=False):
     cachedir = os.path.join(devkit_path, 'annotations_cache')
     aps = []
     # The PASCAL VOC metric changed in 2010
     use_07_metric = use_07
-    print('VOC07 metric? ' + ('Yes' if use_07_metric else 'No'))
+    # print('VOC07 metric? ' + ('Yes' if use_07_metric else 'No'))
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
     for i, cls in enumerate(labelmap):
         filename = get_voc_results_file_template(set_type, cls)
         rec, prec, ap = voc_eval(
-           filename, annopath, imgsetpath.format(set_type), cls, cachedir,
-           ovthresh=0.5, use_07_metric=use_07_metric)
+            filename, annopath,imgpath, args.imagesetfile, cls, cachedir,
+            ovthresh=0.5, use_07_metric=use_07_metric)
         aps += [ap]
-        print('AP for {} = {:.4f}'.format(cls, ap))
+        # print('AP for {} = {:.4f}'.format(cls, ap))
         with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
             pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
-    print('Mean AP = {:.4f}'.format(np.mean(aps)))
-    print('~~~~~~~~')
-    print('Results:')
-    for ap in aps:
-        print('{:.3f}'.format(ap))
-    print('{:.3f}'.format(np.mean(aps)))
-    print('~~~~~~~~')
-    print('')
-    print('--------------------------------------------------------------')
-    print('Results computed with the **unofficial** Python eval code.')
-    print('Results should be very close to the official MATLAB eval code.')
-    print('--------------------------------------------------------------')
-
+    print("EPOCH, {:d}, mAP, {:.4f}, core_AP, {:.4f}, coreless_AP, {:.4f}".format(EPOCH, np.mean(aps), aps[0], aps[1]))
+    # print('Mean AP = {:.4f}'.format(np.mean(aps)))
 
 def voc_ap(rec, prec, use_07_metric=True):
     """ ap = voc_ap(rec, prec, [use_07_metric])
@@ -227,6 +244,7 @@ def voc_ap(rec, prec, use_07_metric=True):
 
 def voc_eval(detpath,
              annopath,
+			 imgpath,
              imagesetfile,
              classname,
              cachedir,
@@ -250,11 +268,11 @@ cachedir: Directory for caching the annotations
 [use_07_metric]: Whether to use VOC07's 11 point AP computation
    (default True)
 """
-# assumes detections are in detpath.format(classname)
-# assumes annotations are in annopath.format(imagename)
-# assumes imagesetfile is a text file with each line an image name
-# cachedir caches the annotations in a pickle file
-# first load gt
+    # assumes detections are in detpath.format(classname)
+    # assumes annotations are in annopath.format(imagename)
+    # assumes imagesetfile is a text file with each line an image name
+    # cachedir caches the annotations in a pickle file
+    # first load gt
     if not os.path.isdir(cachedir):
         os.mkdir(cachedir)
     cachefile = os.path.join(cachedir, 'annots.pkl')
@@ -262,28 +280,44 @@ cachedir: Directory for caching the annotations
     with open(imagesetfile, 'r') as f:
         lines = f.readlines()
     imagenames = [x.strip() for x in lines]
+
+    '''
+    imagenames = []
+    listdir = os.listdir(osp.join('%s' % args.SIXray_root, 'Annotation'))
+    for name in listdir:
+        imagenames.append(osp.splitext(name)[0])
+    '''
+
     if not os.path.isfile(cachefile):
+        # print('not os.path.isfile')
         # load annots
         recs = {}
         for i, imagename in enumerate(imagenames):
-            recs[imagename] = parse_rec(annopath % (imagename))
+            recs[imagename] = parse_rec(annopath % (imagename),imgpath % (imagename))
+            '''
             if i % 100 == 0:
                 print('Reading annotation for {:d}/{:d}'.format(
-                   i + 1, len(imagenames)))
+                    i + 1, len(imagenames)))
+            '''
         # save
-        print('Saving cached annotations to {:s}'.format(cachefile))
+        # print('Saving cached annotations to {:s}'.format(cachefile))
         with open(cachefile, 'wb') as f:
             pickle.dump(recs, f)
     else:
+        # print('no,no,no')
         # load
         with open(cachefile, 'rb') as f:
             recs = pickle.load(f)
+
+    # print (recs)
+    # print (classname)
 
     # extract gt objects for this class
     class_recs = {}
     npos = 0
     for imagename in imagenames:
         R = [obj for obj in recs[imagename] if obj['name'] == classname]
+
         bbox = np.array([x['bbox'] for x in R])
         difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
         det = [False] * len(R)
@@ -291,6 +325,8 @@ cachedir: Directory for caching the annotations
         class_recs[imagename] = {'bbox': bbox,
                                  'difficult': difficult,
                                  'det': det}
+
+    # print (class_recs)
 
     # read dets
     detfile = detpath.format(classname)
@@ -368,16 +404,19 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
     #    all_boxes[cls][image] = N x 5 array of detections in
     #    (x1, y1, x2, y2, score)
     all_boxes = [[[] for _ in range(num_images)]
-                 for _ in range(len(labelmap)+1)]
+                 for _ in range(len(labelmap) + 1)]
 
     # timers
     _t = {'im_detect': Timer(), 'misc': Timer()}
-    output_dir = get_output_dir('ssd300_120000', set_type)
+    output_dir = get_output_dir('ssd300_sixray', set_type)
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):
-        im, gt, h, w = dataset.pull_item(i)
+        im, gt, h, w, og_im = dataset.pull_item(i)
+        # 这里im的颜色偏暗，因为BaseTransform减去了一个mean
 
+        im_det = og_im.copy()
+        # print(im_det)
         x = Variable(im.unsqueeze(0))
         if args.cuda:
             x = x.cuda()
@@ -386,6 +425,9 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
         detect_time = _t['im_detect'].toc(average=False)
 
         # skip j = 0, because it's the background class
+        # //
+        # //
+        # print(detections)
         for j in range(1, detections.size(1)):
             dets = detections[0, j, :]
             mask = dets[:, 0].gt(0.).expand(5, dets.size(0)).t()
@@ -397,19 +439,52 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
             boxes[:, 2] *= w
             boxes[:, 1] *= h
             boxes[:, 3] *= h
+            # print(boxes)
             scores = dets[:, 0].cpu().numpy()
             cls_dets = np.hstack((boxes.cpu().numpy(),
                                   scores[:, np.newaxis])).astype(np.float32,
                                                                  copy=False)
             all_boxes[j][i] = cls_dets
 
-        print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
-                                                    num_images, detect_time))
+            # print(all_boxes)
+            for item in cls_dets:
+                # print(item)
+                # print(item[5])
+                if item[4] > thresh:
+                    # print(item)
+                    chinese = labelmap[j - 1] + str(round(item[4], 2))
+                    # print(chinese+'det\n\n')
+                    if chinese[0] == '带':
+                        chinese = 'P_Battery_Core' + chinese[6:]
+                    else:
+                        chinese = 'P_Battery_No_Core' + chinese[7:]
+                    cv2.rectangle(im_det, (item[0], item[1]), (item[2], item[3]), (0, 0, 255), 2)
+                    cv2.putText(im_det, chinese, (int(item[0]), int(item[1]) - 5), 0,
+                                0.6, (0, 0, 255), 2)
+        real = 0
+        if gt[0][4] == 3:
+            real = 0
+        else:
+            real = 1
+
+        for item in gt:
+            if real == 0:
+                print('this pic dont have the obj:', dataset.ids[i])
+                break
+            chinese = labelmap[int(item[4])]
+            # print(chinese+'gt\n\n')
+            if chinese[0] == '带':
+                chinese = 'P_Battery_Core'
+            else:
+                chinese = 'P_Battery_No_Core'
+            cv2.rectangle(im_det, (int(item[0] * w), int(item[1] * h)), (int(item[2] * w), int(item[3] * h)),
+                          (0, 255, 255), 2)
+            cv2.putText(im_det, chinese, (int(item[0] * w), int(item[1] * h) - 5), 0, 0.6, (0, 255, 255), 2)
 
     with open(det_file, 'wb') as f:
         pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
 
-    print('Evaluating detections')
+    # print('Evaluating detections')
     evaluate_detections(all_boxes, output_dir, dataset)
 
 
@@ -420,15 +495,15 @@ def evaluate_detections(box_list, output_dir, dataset):
 
 if __name__ == '__main__':
     # load net
-    num_classes = len(labelmap) + 1                      # +1 for background
-    net = build_ssd('test', 300, num_classes)            # initialize SSD
+    num_classes = len(labelmap) + 1  # +1 for background
+    net = build_ssd('test', 300, num_classes)  # initialize SSD
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')
     # load data
-    dataset = VOCDetection(args.voc_root, [('2007', set_type)],
-                           BaseTransform(300, dataset_mean),
-                           VOCAnnotationTransform())
+    dataset = SIXrayDetection(args.SIXray_root, ['test_data'],
+                              BaseTransform(300, dataset_mean),
+                              SIXrayAnnotationTransform())
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True

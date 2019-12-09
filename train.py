@@ -1,19 +1,17 @@
+import argparse
+import time
+
+import torch.backends.cudnn as cudnn
+import torch.nn as nn
+import torch.nn.init as init
+import torch.optim as optim
+from torch.autograd import Variable
+
 from data import *
-from utils.augmentations import SSDAugmentation
+from data.SIXray import *
 from layers.modules import MultiBoxLoss
 from ssd import build_ssd
-import os
-import sys
-import time
-import torch
-from torch.autograd import Variable
-import torch.nn as nn
-import torch.optim as optim
-import torch.backends.cudnn as cudnn
-import torch.nn.init as init
-import torch.utils.data as data
-import numpy as np
-import argparse
+from utils.augmentations import SSDAugmentation
 
 
 def str2bool(v):
@@ -23,9 +21,9 @@ def str2bool(v):
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],
-                    type=str, help='VOC or COCO')
-parser.add_argument('--dataset_root', default=VOC_ROOT,
+parser.add_argument('--dataset', default='SIXray', choices=['VOC', 'SIXray'],
+                    type=str, help='VOC or SIXray')
+parser.add_argument('--dataset_root', default=SIXray_ROOT,
                     help='Dataset root directory path')
 parser.add_argument('--basenet', default='vgg16_reducedfc.pth',
                     help='Pretrained base model')
@@ -74,6 +72,10 @@ def train():
         dataset = VOCDetection(root=args.dataset_root,
                                transform=SSDAugmentation(cfg['min_dim'],
                                                          MEANS))
+    elif args.dataset == 'SIXray':
+        cfg = ray
+        dataset = SIXrayDetection(root=args.dataset_root,
+                                  transform=BaseTransform(cfg['min_dim'], MEANS))
 
     if args.visdom:
         import visdom
@@ -116,7 +118,7 @@ def train():
     epoch = 0
     print('Loading the dataset...')
 
-    epoch_size = len(dataset) // args.batch_size
+    epoch_size = len(dataset)
     print('Training SSD on:', dataset.name)
     print('Using the specified args:')
     print(args)
@@ -180,14 +182,15 @@ def train():
         if iteration % 10 == 0:
             print('timer: %.4f sec.' % (t1 - t0))
             print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.item()), end=' ')
+            print(dataset.ids[iteration][0], ' || ', end='')
 
         if args.visdom:
             update_vis_plot(iteration, loss_l.data[0], loss_c.data[0],
                             iter_plot, epoch_plot, 'append')
 
-        if iteration != 0 and iteration % 500 == 0:
+        if iteration != 0 and iteration % 2000 == 0:
             print('Saving state, iter:', iteration)
-            torch.save(ssd_net.state_dict(), 'weights/ssd300_VOC_' +
+            torch.save(ssd_net.state_dict(), 'weights/ssd300_Ray_' +
                        repr(iteration) + '.pth')
     torch.save(ssd_net.state_dict(),
                args.save_folder + '' + args.dataset + '.pth')

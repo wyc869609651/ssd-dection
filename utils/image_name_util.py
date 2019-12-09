@@ -1,9 +1,9 @@
 import os
 
 
-core_500_root = 'D:/吴彦辰/buaa/core_500'
-coreless_500_root = 'D:/吴彦辰/buaa/coreless_5000'
-test_root = 'G:/MachineLearning/test_data1'
+core_500_root = 'G:/MachineLearning/cover/core_3000'
+coreless_500_root = 'G:/MachineLearning/cover/coreless_3000'
+test_root = 'G:/MachineLearning/cover/test_data'
 
 
 def get_train_list():
