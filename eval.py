@@ -37,29 +37,27 @@ EPOCH = 1
 GPUID = '0'
 os.environ["CUDA_VISIBLE_DEVICES"] = GPUID
 
+# 测试集路径修改这里就行了
+dataset_root = 'G:\\MachineLearning\\unbalance\\test_data1'
+
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
+parser.add_argument('--SIXray_root', default=SIXray_ROOT,
+                    help='Location of VOC root directory')
 parser.add_argument('--trained_model',
                     default="./weights/SIXray.pth", type=str,
                     help='Trained state_dict file path to open')
-parser.add_argument(  # '--save_folder', default='/media/dsg3/husheng/eval/', type=str,
-    '--save_folder',
-    default="", type=str,
-    help='File path to save results')
+parser.add_argument('--save_folder',
+                    default="", type=str,
+                    help='File path to save results')
 parser.add_argument('--confidence_threshold', default=0.2, type=float,
                     help='Detection confidence threshold')
 parser.add_argument('--top_k', default=5, type=int,
                     help='Further restrict the number of predictions to parse')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use cuda to train model')
-parser.add_argument('--SIXray_root', default=SIXray_ROOT,
-                    help='Location of VOC root directory')
 parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
-parser.add_argument('--imagesetfile',
-                    # default='/media/dsg3/datasets/SIXray/dataset-test.txt', type=str,
-                    default=os.path.join(SIXray_ROOT, 'test_data', 'nameList.txt'), type=str,
-                    help='imageset file path to open')
 
 args = parser.parse_args()
 
@@ -73,8 +71,6 @@ if torch.cuda.is_available():
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
-annopath = os.path.join(args.SIXray_root, 'test_data', 'Annotation', '%s.txt')
-imgpath = os.path.join(args.SIXray_root, 'test_data', 'Image', '%s.jpg')
 
 devkit_path = args.save_folder
 dataset_mean = (104, 117, 123)
@@ -196,10 +192,11 @@ def do_python_eval(output_dir='output', use_07=False):
     # print('VOC07 metric? ' + ('Yes' if use_07_metric else 'No'))
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
+    annopath = os.path.join(dataset_root, 'Annotation')
+    imgpath = os.path.join(dataset_root, 'Image')
     for i, cls in enumerate(labelmap):
         filename = get_voc_results_file_template(set_type, cls)
-        rec, prec, ap = voc_eval(
-            filename, annopath,imgpath, args.imagesetfile, cls, cachedir,
+        rec, prec, ap = voc_eval(filename, annopath,imgpath, cls, cachedir,
             ovthresh=0.5, use_07_metric=use_07_metric)
         aps += [ap]
         # print('AP for {} = {:.4f}'.format(cls, ap))
@@ -245,7 +242,6 @@ def voc_ap(rec, prec, use_07_metric=True):
 def voc_eval(detpath,
              annopath,
 			 imgpath,
-             imagesetfile,
              classname,
              cachedir,
              ovthresh=0.5,
@@ -277,23 +273,22 @@ cachedir: Directory for caching the annotations
         os.mkdir(cachedir)
     cachefile = os.path.join(cachedir, 'annots.pkl')
     # read list of images
-    with open(imagesetfile, 'r') as f:
-        lines = f.readlines()
-    imagenames = [x.strip() for x in lines]
+    # with open(imagesetfile, 'r') as f:
+    #     lines = f.readlines()
+    # imagenames = [x.strip() for x in lines]
 
-    '''
     imagenames = []
-    listdir = os.listdir(osp.join('%s' % args.SIXray_root, 'Annotation'))
-    for name in listdir:
-        imagenames.append(osp.splitext(name)[0])
-    '''
+    for name in os.listdir(annopath):
+        imagenames.append(os.path.splitext(name)[0])
 
     if not os.path.isfile(cachefile):
         # print('not os.path.isfile')
         # load annots
         recs = {}
         for i, imagename in enumerate(imagenames):
-            recs[imagename] = parse_rec(annopath % (imagename),imgpath % (imagename))
+            anno_file = annopath + imagename + '.txt'
+            img_file = annopath + imagename + '.jpg'
+            recs[imagename] = parse_rec(anno_file, img_file)
             '''
             if i % 100 == 0:
                 print('Reading annotation for {:d}/{:d}'.format(
@@ -501,7 +496,7 @@ if __name__ == '__main__':
     net.eval()
     print('Finished loading model!')
     # load data
-    dataset = SIXrayDetection(args.SIXray_root, ['test_data'],
+    dataset = SIXrayDetection(args.SIXray_root, ['test_data1'],
                               BaseTransform(300, dataset_mean),
                               SIXrayAnnotationTransform())
     if args.cuda:

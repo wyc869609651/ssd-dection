@@ -18,7 +18,7 @@ SIXray_CLASSES = (
     '带电芯充电宝', '不带电芯充电宝'
 )
 # note: if you used our download scripts, this should be right
-SIXray_ROOT = "G:/MachineLearning/cover"
+SIXray_ROOT = "G:/MachineLearning/unbalance"
 
 
 class SIXrayAnnotationTransform(object):
@@ -110,23 +110,29 @@ class SIXrayDetection(data.Dataset):
     """
 
     def __init__(self, root,
-                 image_sets=['core_3000', 'coreless_3000'],
+                 image_sets=['core_500', 'coreless_5000'],
                  transform=None, target_transform=SIXrayAnnotationTransform(),
                  dataset_name='SIXray_train'):
-        # self.root = root
-        self.root = SIXray_ROOT
+        self.root = root
         self.image_set = image_sets
         self.transform = transform
         self.target_transform = target_transform
         self.name = dataset_name
-        self._annopath = osp.join(self.root, '%s', 'Annotation', '%s.txt')
-        self._imgpath = osp.join(self.root, '%s', 'Image', '%s.jpg')
+        self._annopath = osp.join('%s', 'Annotation', '%s.txt')
+        self._imgpath = osp.join('%s', 'Image', '%s.jpg')
         self.ids = list()
-        for dirname in image_sets:
-            nameListPath = osp.join(self.root, dirname, 'nameList.txt')
-            for line in open(nameListPath, 'r'):
-                self.ids.append((dirname, line.strip()))
-        # random.shuffle(self.ids)
+        if image_sets==None or len(image_sets)==0:
+            rootPath = self.root
+            annoPath = os.path.join(rootPath, 'Annotation')
+            for fileName in os.listdir(annoPath):
+                self.ids.append((rootPath, fileName.split(".")[0]))
+        else:
+            for dirname in image_sets:
+                rootPath = os.path.join(self.root, dirname)
+                annoPath = os.path.join(rootPath, 'Annotation')
+                for fileName in os.listdir(annoPath):
+                    self.ids.append((rootPath, fileName.split(".")[0]))
+        random.shuffle(self.ids)
 
     def __getitem__(self, index):
         im, gt, h, w, og_im = self.pull_item(index)
@@ -139,6 +145,7 @@ class SIXrayDetection(data.Dataset):
         img_id = self.ids[index]
         target = self._annopath % img_id  # 注释目录
         img = cv2.imread(self._imgpath % img_id)
+        img = cv2.applyColorMap(img, 2)
         if img is None:
             print('\nwrong\n')
             print(self._imgpath % img_id)
