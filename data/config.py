@@ -13,7 +13,7 @@ MEANS = (104, 117, 123)
 # SSD300 CONFIGS
 ray = {
     'num_classes': 3,
-    'lr_steps': (2000, 100000, 120000),
+    'lr_steps': (7000, 100000, 120000),
     'max_iter': 10000,
     'feature_maps': [38, 19, 10, 5, 3, 1],
     'min_dim': 300,
